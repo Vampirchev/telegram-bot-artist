@@ -13,6 +13,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 BOT_TOKEN = "8606858777:AAG8beK0_nsqLJmcekljugRbl-vR1onBdWM"
 ADMIN_PASSWORD = "Qwerty12345"
 ADMIN_USERNAME = "@PavelAlexandroviich"
+ADMIN_USERNAME = "@tosha_grak"
 PORTFOLIO_LINK = "https://t.me/BeaverStudio"
 
 # Включаем логирование
