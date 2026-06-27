@@ -13,7 +13,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 # ==================== НАСТРОЙКИ ====================
 BOT_TOKEN = "8606858777:AAG8beK0_nsqLJmcekljugRbl-vR1onBdWM"
 ADMIN_PASSWORD = "Qwerty12345"
-MANAGERS = ["PavelAlexandoviich", "tosha_grak"]  # Юзернеймы менеджеров (без @)
+MANAGERS = ["PavelAlexandroviich", "tosha_grak"]  # Юзернеймы менеджеров (без @)
 PORTFOLIO_LINK = "https://t.me/BeaverStudio"
 ORDERS_FILE = "orders.json"
 
@@ -311,7 +311,7 @@ async def process_manager_contact(message: types.Message, state: FSMContext):
         await message.answer(
             f"✅ **Спасибо, {data['name']}!**\n\n"
             f"Ваша заявка №{order['id']} принята.\n"
-            f"📩 Менеджеры свяжутся с вами: @PavelAlexandoviich или @tosha_grak\n\n"
+            f"📩 Менеджеры свяжутся с вами \n\n"
             f"🐸 Хорошего дня!",
             reply_markup=get_contact_menu(),
             parse_mode="Markdown"
@@ -391,7 +391,7 @@ async def mark_order_done(callback: types.CallbackQuery):
                 chat_id=order["user_id"],
                 text=f"✅ **Заявка №{order_id} выполнена!**\n\n"
                      f"Спасибо за заказ, {order['name']}! 🐸\n"
-                     f"Если остались вопросы — напишите @PavelAlexandoviich или @tosha_grak",
+                     f"Если остались вопросы — напишите менеджерам",
                 parse_mode="Markdown"
             )
         except Exception as e:
@@ -413,7 +413,7 @@ async def mark_order_rejected(callback: types.CallbackQuery):
                 chat_id=order["user_id"],
                 text=f"❌ **Заявка №{order_id} отклонена**\n\n"
                      f"{order['name']}, к сожалению, мы не можем выполнить ваш заказ в текущем виде.\n"
-                     f"Вы можете уточнить детали у @PavelAlexandoviich или @tosha_grak и оформить новую заявку 🐸",
+                     f"Вы можете уточнить детали у менеджеров и оформить новую заявку 🐸",
                 parse_mode="Markdown"
             )
         except Exception as e:
