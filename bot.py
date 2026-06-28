@@ -18,7 +18,7 @@ from aiohttp import web
 # ==================== НАСТРОЙКИ ====================
 BOT_TOKEN = "8606858777:AAG8beK0_nsqLJmcekljugRbl-vR1onBdWM"
 ADMIN_IDS = [1226747872, 713645590]  # ✅ ЗАМЕНИТЕ на ваши ID
-ADMIN_CHAT_ID = -4341787203      # ✅ ЗАМЕНИТЕ на актуальный ID чата
+ADMIN_CHAT_ID = -1004341787203      # ✅ ЗАМЕНИТЕ на актуальный ID чата
 MANAGER_CONTACT = "PavelAlexandroviich"
 PORTFOLIO_LINK = "https://t.me/BeaverStudio"
 DB_FILE = "orders.db"
