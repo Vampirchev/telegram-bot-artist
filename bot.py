@@ -12,13 +12,13 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.exceptions import TelegramConflictError, TelegramAPIError
+from aiogram.exceptions import TelegramConflictError, TelegramAPIError, TelegramBadRequest
 from aiohttp import web
 
 # ==================== НАСТРОЙКИ ====================
 BOT_TOKEN = "8606858777:AAG8beK0_nsqLJmcekljugRbl-vR1onBdWM"
-ADMIN_IDS = [1226747872, 713645590]  # ✅ ID администраторов
-ADMIN_CHAT_ID = -4341787203      # ✅ Исправленный ID супергруппы
+ADMIN_IDS = [1226747872, 713645590]  # ✅ ЗАМЕНИТЕ на ваши ID
+ADMIN_CHAT_ID = -4341787203      # ✅ ЗАМЕНИТЕ на актуальный ID чата
 MANAGER_CONTACT = "PavelAlexandroviich"
 PORTFOLIO_LINK = "https://t.me/BeaverStudio"
 DB_FILE = "orders.db"
@@ -31,7 +31,6 @@ logging.basicConfig(
 
 # ==================== УТИЛИТЫ ====================
 def clean_telegram_text(text: str) -> str:
-    """Удаляет скрытые символы и опасные для парсинга Telegram знаки"""
     if not text:
         return ""
     text = unicodedata.normalize("NFC", text)
@@ -58,7 +57,6 @@ def init_db():
             created_at TEXT NOT NULL
         )
     """)
-    # Миграция: добавляем photo_file_id если нет
     cursor.execute("PRAGMA table_info(orders)")
     columns = [col[1] for col in cursor.fetchall()]
     if "photo_file_id" not in columns:
@@ -195,94 +193,60 @@ def get_order_actions(order_id: int):
 
 # ==================== ТЕКСТЫ ====================
 START_TEXT = "Ква!🐸Рада приветствовать вас! Надеюсь вам у нас понравится!"
-
 PRICES_TEXT = """
 🎨 <b>ПРАЙС-ЛИСТ</b>
-
 <b>• Диджитал работы</b> — от 800 ₽
 <i>Учитывается объём, детализация и стиль.</i>
-
 <b>• Традиционные картины</b> — от 5 000 ₽
 <i>Учитывается объём работы и затрата материалов.</i>
-
 <b>• Плакаты и кастом</b> — от 1 000 ₽
 <i>Учитывается качество одежды, затрата материалов, разработка дизайна и стиль.</i>
-
 📌 <b>Традиционные работы:</b>
 1. Дощечка с росписью (Гжель, Хохлома, Городетская и так далее)
 2. Витраж
 3. Текстурная картина (Белая/рельеф и цветная)
-
 👕 <b>Изделия для повседневности:</b>
 1. Роспись тканевой сумки
 2. Футболки, толстовки
 3. Хаори
 4. Штаны
-
 💬 Для точного расчета стоимости напишите в личные сообщения — стоимость уточняется при общении!
 """
-
 DELIVERY_TEXT = """
 📦 <b>ДОСТАВКА</b>
-
 Отдельно оплачивается и зависит от выбранного пункта выдачи:
-
 🚚 <b>Службы доставки:</b>
-• Яндекс Доставка
-• Ozon
-• Wildberries
-• СДЭК
-
+• Яндекс Доставка • Ozon • Wildberries • СДЭК
 💰 Стоимость уточняется при общении по вашему адресу.
-
 Напишите ваш город и удобный пункт выдачи — рассчитаю стоимость доставки!
 """
-
 GUARANTEES_TEXT = """
 ✨ <b>ГАРАНТИИ И ПРАВКИ</b>
-
 ✅ Гарантирую качество всех работ
-
 🎨 <b>Что входит:</b>
 • Все правки принимаются БЕЗ доплаты
 • Делаю эскизы перед началом работы
 • Адаптирую дизайн под ваши вкусы и пожелания
 • Индивидуальный подход к каждому заказу
-
 Ваше удовлетворение — мой приоритет! 🐸
 """
-
 TERMS_TEXT = """
 ⏱️ <b>СРОКИ ВЫПОЛНЕНИЯ</b>
-
-🖥️ <b>Диджитал, плакаты, кастом:</b>
-1–2 недели
-
-🎨 <b>Картины (традиционные):</b>
-До 1 месяца
-
+🖥️ <b>Диджитал, плакаты, кастом:</b> 1–2 недели
+🎨 <b>Картины (традиционные):</b> До 1 месяца
 ⚡ Возможна срочная работа — уточняйте при общении!
 """
-
 PORTFOLIO_TEXT = f"""
 🖼️ <b>ПОРТФОЛИО</b>
-
 Для публикации вашего заказа в портфолио буду запрашивать ваше разрешение.
-
 📸 Все работы публикуются только с согласия заказчика!
-
 🔗 Посмотреть примеры работ: {PORTFOLIO_LINK}
-
 Хотите заказать что-то похожее? Оформите заказ ниже! 🐸
 """
-
 ORDER_START_TEXT = """
 📝 <b>ОФОРМЛЕНИЕ ЗАКАЗА</b>
-
 Давайте начнём! Пожалуйста, ответьте на несколько вопросов.
-
 🔹 <b>Шаг 1/5</b>: Как к вам обращаться? (Ваше имя)
-
 💡 <i>Напишите /cancel в любой момент, чтобы отменить заказ</i>
 """
 
@@ -304,42 +268,66 @@ async def cmd_cancel(message: types.Message, state: FSMContext):
 @dp.callback_query(F.data == "back_to_main")
 async def back_to_main(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text(START_TEXT, reply_markup=get_main_menu(callback.from_user.id))
+    try:
+        await callback.message.edit_text(START_TEXT, reply_markup=get_main_menu(callback.from_user.id))
+    except TelegramBadRequest:
+        await callback.message.answer(START_TEXT, reply_markup=get_main_menu(callback.from_user.id))
     await callback.answer()
 
 @dp.callback_query(F.data == "prices")
 async def show_prices(callback: types.CallbackQuery):
-    await callback.message.edit_text(PRICES_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
+    try:
+        await callback.message.edit_text(PRICES_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
+    except TelegramBadRequest:
+        await callback.message.answer(PRICES_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data == "delivery")
 async def show_delivery(callback: types.CallbackQuery):
-    await callback.message.edit_text(DELIVERY_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
+    try:
+        await callback.message.edit_text(DELIVERY_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
+    except TelegramBadRequest:
+        await callback.message.answer(DELIVERY_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data == "guarantees")
 async def show_guarantees(callback: types.CallbackQuery):
-    await callback.message.edit_text(GUARANTEES_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
+    try:
+        await callback.message.edit_text(GUARANTEES_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
+    except TelegramBadRequest:
+        await callback.message.answer(GUARANTEES_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data == "terms")
 async def show_terms(callback: types.CallbackQuery):
-    await callback.message.edit_text(TERMS_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
+    try:
+        await callback.message.edit_text(TERMS_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
+    except TelegramBadRequest:
+        await callback.message.answer(TERMS_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data == "portfolio")
 async def show_portfolio(callback: types.CallbackQuery):
-    await callback.message.edit_text(PORTFOLIO_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
+    try:
+        await callback.message.edit_text(PORTFOLIO_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
+    except TelegramBadRequest:
+        await callback.message.answer(PORTFOLIO_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data == "contact_managers")
 async def contact_managers_menu(callback: types.CallbackQuery):
-    await callback.message.edit_text("💬 <b>Написать менеджеру:</b>", reply_markup=get_contact_menu(), parse_mode="HTML")
+    try:
+        await callback.message.edit_text("💬 <b>Написать менеджеру:</b>", reply_markup=get_contact_menu(), parse_mode="HTML")
+    except TelegramBadRequest:
+        await callback.message.answer("💬 <b>Написать менеджеру:</b>", reply_markup=get_contact_menu(), parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data == "order")
 async def start_order(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.edit_text(ORDER_START_TEXT, reply_markup=get_contact_menu(), parse_mode="HTML")
+    try:
+        await callback.message.edit_text(ORDER_START_TEXT, reply_markup=get_contact_menu(), parse_mode="HTML")
+    except TelegramBadRequest:
+        await callback.message.answer(ORDER_START_TEXT, reply_markup=get_contact_menu(), parse_mode="HTML")
     await callback.answer()
     await state.set_state(OrderForm.name)
 
@@ -420,16 +408,28 @@ async def open_admin_panel(callback: types.CallbackQuery):
         await callback.answer("⛔ Доступ запрещён", show_alert=True)
         return
     stats = get_stats()
-    await callback.message.edit_text(
-        f"📊 <b>СТАТИСТИКА</b>\n"
-        f"📦 Всего: {stats['total']}\n"
-        f"🆕 Новые: {stats['new']}\n"
-        f"✅ Выполнено: {stats['done']}\n"
-        f"❌ Отклонено: {stats['rejected']}\n\n"
-        f"🔹 Выберите действие:",
-        reply_markup=get_admin_panel(),
-        parse_mode="HTML"
-    )
+    try:
+        await callback.message.edit_text(
+            f"📊 <b>СТАТИСТИКА</b>\n"
+            f"📦 Всего: {stats['total']}\n"
+            f"🆕 Новые: {stats['new']}\n"
+            f"✅ Выполнено: {stats['done']}\n"
+            f"❌ Отклонено: {stats['rejected']}\n\n"
+            f"🔹 Выберите действие:",
+            reply_markup=get_admin_panel(),
+            parse_mode="HTML"
+        )
+    except TelegramBadRequest:
+        await callback.message.answer(
+            f"📊 <b>СТАТИСТИКА</b>\n"
+            f"📦 Всего: {stats['total']}\n"
+            f"🆕 Новые: {stats['new']}\n"
+            f"✅ Выполнено: {stats['done']}\n"
+            f"❌ Отклонено: {stats['rejected']}\n\n"
+            f"🔹 Выберите действие:",
+            reply_markup=get_admin_panel(),
+            parse_mode="HTML"
+        )
     await callback.answer()
 
 def format_order_caption(order: dict) -> str:
@@ -467,7 +467,8 @@ async def show_unseen_orders(callback: types.CallbackQuery):
         return
     unseen = get_orders(status="new")
     if not unseen:
-        await callback.message.edit_text("🎉 Нет новых заявок!", reply_markup=get_admin_panel())
+        # 🔴 Используем answer вместо edit_text, чтобы избежать ошибки с фото
+        await callback.message.answer("🎉 Нет новых заявок!", reply_markup=get_admin_panel())
         await callback.answer()
         return
     for order in unseen:
@@ -487,7 +488,10 @@ async def mark_order_done(callback: types.CallbackQuery):
                 text=f"✅ Заявка №{order_id} выполнена!\n\nСпасибо за заказ, {clean_telegram_text(order['name'])}! 🐸\nЕсли остались вопросы — напишите @{MANAGER_CONTACT}"
             )
         except: pass
-        await callback.message.edit_text(f"✅ Заявка №{order_id} выполнена.", reply_markup=get_admin_panel())
+        try:
+            await callback.message.edit_text(f"✅ Заявка №{order_id} выполнена.", reply_markup=get_admin_panel())
+        except TelegramBadRequest:
+            await callback.message.answer(f"✅ Заявка №{order_id} выполнена.", reply_markup=get_admin_panel())
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("admin_reject_"))
@@ -503,7 +507,10 @@ async def mark_order_rejected(callback: types.CallbackQuery):
                 text=f"❌ Заявка №{order_id} отклонена\n\n{clean_telegram_text(order['name'])}, к сожалению, мы не можем выполнить заказ в текущем виде.\nУточните детали у @{MANAGER_CONTACT} и оформите новую заявку 🐸"
             )
         except: pass
-        await callback.message.edit_text(f"❌ Заявка №{order_id} отклонена.", reply_markup=get_admin_panel())
+        try:
+            await callback.message.edit_text(f"❌ Заявка №{order_id} отклонена.", reply_markup=get_admin_panel())
+        except TelegramBadRequest:
+            await callback.message.answer(f"❌ Заявка №{order_id} отклонена.", reply_markup=get_admin_panel())
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("admin_contact_"))
@@ -526,7 +533,7 @@ async def show_all_orders(callback: types.CallbackQuery):
         return
     all_orders = get_orders()
     if not all_orders:
-        await callback.message.edit_text("📭 Заявок пока нет.", reply_markup=get_admin_panel())
+        await callback.message.answer("📭 Заявок пока нет.", reply_markup=get_admin_panel())
         await callback.answer()
         return
     for order in all_orders:
@@ -538,20 +545,23 @@ async def handle_health(request):
     return web.Response(text="🐸 Bot is alive!", content_type="text/plain")
 
 async def run_polling():
-    """Запускает polling с обработкой конфликтов"""
+    """Запускает polling с максимальной защитой от конфликтов"""
+    # 🔄 Ждём, чтобы старый процесс точно умер
+    await asyncio.sleep(2)
+    
     try:
         await bot.delete_webhook(drop_pending_updates=True)
-        await asyncio.sleep(1)  # Ждём, пока Telegram отключит webhook
-        logging.info("🔌 Webhook отключён, готовлю polling...")
+        await asyncio.sleep(2)  # Даём Telegram время на обработку
+        logging.info("🔌 Webhook отключён")
     except Exception as e:
         logging.warning(f"⚠️ Не удалось отключить webhook: {e}")
     
-    max_retries = 5
-    retry_delay = 2
+    max_retries = 10
+    retry_delay = 3
     
     for attempt in range(max_retries):
         try:
-            logging.info(f"✅ Запуск polling (попытка {attempt+1})")
+            logging.info(f"✅ Запуск polling (попытка {attempt+1}/{max_retries})")
             await dp.start_polling(bot)
             break
         except TelegramConflictError as e:
@@ -559,9 +569,9 @@ async def run_polling():
             if attempt < max_retries - 1:
                 logging.info(f"🔄 Повтор через {retry_delay} сек...")
                 await asyncio.sleep(retry_delay)
-                retry_delay *= 2
+                retry_delay = min(retry_delay * 2, 30)  # Не больше 30 сек
             else:
-                logging.error("❌ Не удалось запустить polling")
+                logging.error("❌ Не удалось запустить polling после нескольких попыток")
                 raise
         except TelegramAPIError as e:
             logging.error(f"❌ Ошибка Telegram API: {e}")
@@ -577,7 +587,8 @@ async def run_http_server():
     app.router.add_get("/health", handle_health)
     runner = web.AppRunner(app)
     await runner.setup()
-    port = int(os.getenv("PORT", 8080))
+    # 🔴 Render сам задаёт PORT, не фиксируем 8080
+    port = int(os.getenv("PORT", 10000))
     site = web.TCPSite(runner, host="0.0.0.0", port=port)
     await site.start()
     logging.info(f"🌐 HTTP-сервер запущен на порту {port}")
