@@ -16,8 +16,8 @@ from aiohttp import web
 
 # ==================== НАСТРОЙКИ ====================
 BOT_TOKEN = "8606858777:AAG8beK0_nsqLJmcekljugRbl-vR1onBdWM"
-ADMIN_IDS = [123456789, 713645590]  # ✅ Ваши ID администраторов
-ADMIN_CHAT_ID = -5345617201        # ✅ ID чата для уведомлений
+ADMIN_IDS = [123456789, 713645590]  # ✅ ID администраторов
+ADMIN_CHAT_ID = -5345617201         # ✅ ID чата для уведомлений
 MANAGER_CONTACT = "PavelAlexandroviich"
 PORTFOLIO_LINK = "https://t.me/BeaverStudio"
 DB_FILE = "orders.db"
@@ -30,7 +30,7 @@ logging.basicConfig(
 
 # ==================== УТИЛИТЫ ====================
 def clean_telegram_text(text: str) -> str:
-    """Удаляет скрытые символы, нормализует Unicode и убирает всё, что ломает Telegram"""
+    """Удаляет скрытые символы и опасные для парсинга Telegram знаки"""
     if not text:
         return ""
     text = unicodedata.normalize("NFC", text)
@@ -57,7 +57,7 @@ def init_db():
             created_at TEXT NOT NULL
         )
     """)
-    # Миграция: добавляем колонку photo_file_id, если её нет
+    # Миграция: добавляем photo_file_id если нет
     cursor.execute("PRAGMA table_info(orders)")
     columns = [col[1] for col in cursor.fetchall()]
     if "photo_file_id" not in columns:
@@ -536,7 +536,12 @@ async def show_all_orders(callback: types.CallbackQuery):
 async def handle_health(request):
     return web.Response(text="🐸 Bot is alive!", content_type="text/plain")
 
-async def start_http_server():
+async def run_polling():
+    await bot.delete_webhook(drop_pending_updates=True)
+    logging.info("✅ Polling запущен")
+    await dp.start_polling(bot)
+
+async def run_http_server():
     app = web.Application()
     app.router.add_get("/", handle_health)
     app.router.add_get("/health", handle_health)
@@ -546,15 +551,16 @@ async def start_http_server():
     site = web.TCPSite(runner, host="0.0.0.0", port=port)
     await site.start()
     logging.info(f"🌐 HTTP-сервер запущен на порту {port}")
-    return runner
+    while True:
+        await asyncio.sleep(3600)
 
 # ==================== ЗАПУСК ====================
 async def main():
-    await bot.delete_webhook(drop_pending_updates=True)
-    if os.getenv("PORT"):
-        await start_http_server()
-    logging.info("✅ Бот запущен (polling + dummy HTTP)")
-    await dp.start_polling(bot)
+    await asyncio.gather(
+        run_polling(),
+        run_http_server(),
+        return_exceptions=True
+    )
 
 def handle_shutdown(signum, frame):
     logging.info("🔄 Завершение работы...")
