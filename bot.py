@@ -5,18 +5,19 @@ import sqlite3
 import os
 import signal
 import sys
+import unicodedata
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiohttp import web  # 🔴 Для Render
+from aiohttp import web
 
 # ==================== НАСТРОЙКИ ====================
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8606858777:AAG8beK0_nsqLJmcekljugRbl-vR1onBdWM")
-ADMIN_IDS = [713645590]  # 🔴 ЗАМЕНИТЕ на ваш ID (@userinfobot)
-ADMIN_CHAT_ID = -5345617201  # 🔴 ЗАМЕНИТЕ на ID чата
+BOT_TOKEN = "8606858777:AAG8beK0_nsqLJmcekljugRbl-vR1onBdWM"
+ADMIN_IDS = [123456789, 713645590]  # ✅ Ваши ID администраторов
+ADMIN_CHAT_ID = -5345617201        # ✅ ID чата для уведомлений
 MANAGER_CONTACT = "PavelAlexandroviich"
 PORTFOLIO_LINK = "https://t.me/BeaverStudio"
 DB_FILE = "orders.db"
@@ -27,7 +28,18 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
-# ==================== РАБОТА С БАЗОЙ ====================
+# ==================== УТИЛИТЫ ====================
+def clean_telegram_text(text: str) -> str:
+    """Удаляет скрытые символы, нормализует Unicode и убирает всё, что ломает Telegram"""
+    if not text:
+        return ""
+    text = unicodedata.normalize("NFC", text)
+    text = "".join(ch for ch in text if ch.isprintable() or ch in "\n\t")
+    for char in ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!', '<', '>']:
+        text = text.replace(char, '')
+    return text.strip()
+
+# ==================== БАЗА ДАННЫХ ====================
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -39,21 +51,27 @@ def init_db():
             name TEXT NOT NULL,
             service TEXT NOT NULL,
             details TEXT NOT NULL,
+            photo_file_id TEXT,
             need_manager BOOLEAN NOT NULL,
             status TEXT DEFAULT 'new',
             created_at TEXT NOT NULL
         )
     """)
+    # Миграция: добавляем колонку photo_file_id, если её нет
+    cursor.execute("PRAGMA table_info(orders)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "photo_file_id" not in columns:
+        cursor.execute("ALTER TABLE orders ADD COLUMN photo_file_id TEXT")
     conn.commit()
     conn.close()
 
-def add_order(user_id, username, name, service, details, need_manager, created_at):
+def add_order(user_id, username, name, service, details, photo_file_id, need_manager, created_at):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO orders (user_id, username, name, service, details, need_manager, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'new', ?)
-    """, (user_id, username, name, service, details, need_manager, created_at))
+        INSERT INTO orders (user_id, username, name, service, details, photo_file_id, need_manager, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?)
+    """, (user_id, username, name, service, details, photo_file_id, need_manager, created_at))
     order_id = cursor.lastrowid
     conn.commit()
     conn.close()
@@ -113,6 +131,7 @@ class OrderForm(StatesGroup):
     name = State()
     service_type = State()
     details = State()
+    photo = State()
     manager_contact = State()
 
 # ==================== КЛАВИАТУРЫ ====================
@@ -175,25 +194,25 @@ def get_order_actions(order_id: int):
 
 # ==================== ТЕКСТЫ ====================
 START_TEXT = "Ква!🐸Рада приветствовать вас! Надеюсь вам у нас понравится!"
-# ... (остальные тексты PRICES_TEXT, DELIVERY_TEXT и т.д. — как в предыдущем коде) ...
+
 PRICES_TEXT = """
-🎨 **ПРАЙС-ЛИСТ**
+🎨 <b>ПРАЙС-ЛИСТ</b>
 
-**• Диджитал работы** — от 800 ₽
-_Учитывается объём, детализация и стиль._
+<b>• Диджитал работы</b> — от 800 ₽
+<i>Учитывается объём, детализация и стиль.</i>
 
-**• Традиционные картины** — от 5 000 ₽
-_Учитывается объём работы и затрата материалов._
+<b>• Традиционные картины</b> — от 5 000 ₽
+<i>Учитывается объём работы и затрата материалов.</i>
 
-**• Плакаты и кастом** — от 1 000 ₽
-_Учитывается качество одежды, затрата материалов, разработка дизайна и стиль._
+<b>• Плакаты и кастом</b> — от 1 000 ₽
+<i>Учитывается качество одежды, затрата материалов, разработка дизайна и стиль.</i>
 
-📌 **Традиционные работы:**
+📌 <b>Традиционные работы:</b>
 1. Дощечка с росписью (Гжель, Хохлома, Городетская и так далее)
 2. Витраж
 3. Текстурная картина (Белая/рельеф и цветная)
 
-👕 **Изделия для повседневности:**
+👕 <b>Изделия для повседневности:</b>
 1. Роспись тканевой сумки
 2. Футболки, толстовки
 3. Хаори
@@ -203,11 +222,11 @@ _Учитывается качество одежды, затрата матер
 """
 
 DELIVERY_TEXT = """
-📦 **ДОСТАВКА**
+📦 <b>ДОСТАВКА</b>
 
 Отдельно оплачивается и зависит от выбранного пункта выдачи:
 
-🚚 **Службы доставки:**
+🚚 <b>Службы доставки:</b>
 • Яндекс Доставка
 • Ozon
 • Wildberries
@@ -219,11 +238,11 @@ DELIVERY_TEXT = """
 """
 
 GUARANTEES_TEXT = """
-✨ **ГАРАНТИИ И ПРАВКИ**
+✨ <b>ГАРАНТИИ И ПРАВКИ</b>
 
 ✅ Гарантирую качество всех работ
 
-🎨 **Что входит:**
+🎨 <b>Что входит:</b>
 • Все правки принимаются БЕЗ доплаты
 • Делаю эскизы перед началом работы
 • Адаптирую дизайн под ваши вкусы и пожелания
@@ -233,19 +252,19 @@ GUARANTEES_TEXT = """
 """
 
 TERMS_TEXT = """
-⏱️ **СРОКИ ВЫПОЛНЕНИЯ**
+⏱️ <b>СРОКИ ВЫПОЛНЕНИЯ</b>
 
-🖥️ **Диджитал, плакаты, кастом:**
+🖥️ <b>Диджитал, плакаты, кастом:</b>
 1–2 недели
 
-🎨 **Картины (традиционные):**
+🎨 <b>Картины (традиционные):</b>
 До 1 месяца
 
 ⚡ Возможна срочная работа — уточняйте при общении!
 """
 
 PORTFOLIO_TEXT = f"""
-🖼️ **ПОРТФОЛИО**
+🖼️ <b>ПОРТФОЛИО</b>
 
 Для публикации вашего заказа в портфолио буду запрашивать ваше разрешение.
 
@@ -257,13 +276,13 @@ PORTFOLIO_TEXT = f"""
 """
 
 ORDER_START_TEXT = """
-📝 **ОФОРМЛЕНИЕ ЗАКАЗА**
+📝 <b>ОФОРМЛЕНИЕ ЗАКАЗА</b>
 
 Давайте начнём! Пожалуйста, ответьте на несколько вопросов.
 
-🔹 **Шаг 1/4**: Как к вам обращаться? (Ваше имя)
+🔹 <b>Шаг 1/5</b>: Как к вам обращаться? (Ваше имя)
 
-💡 *Напишите /cancel в любой момент, чтобы отменить заказ*
+💡 <i>Напишите /cancel в любой момент, чтобы отменить заказ</i>
 """
 
 # ==================== ОБРАБОТЧИКИ ====================
@@ -289,37 +308,37 @@ async def back_to_main(callback: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "prices")
 async def show_prices(callback: types.CallbackQuery):
-    await callback.message.edit_text(PRICES_TEXT, reply_markup=get_back_button(), parse_mode="Markdown")
+    await callback.message.edit_text(PRICES_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data == "delivery")
 async def show_delivery(callback: types.CallbackQuery):
-    await callback.message.edit_text(DELIVERY_TEXT, reply_markup=get_back_button(), parse_mode="Markdown")
+    await callback.message.edit_text(DELIVERY_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data == "guarantees")
 async def show_guarantees(callback: types.CallbackQuery):
-    await callback.message.edit_text(GUARANTEES_TEXT, reply_markup=get_back_button(), parse_mode="Markdown")
+    await callback.message.edit_text(GUARANTEES_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data == "terms")
 async def show_terms(callback: types.CallbackQuery):
-    await callback.message.edit_text(TERMS_TEXT, reply_markup=get_back_button(), parse_mode="Markdown")
+    await callback.message.edit_text(TERMS_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data == "portfolio")
 async def show_portfolio(callback: types.CallbackQuery):
-    await callback.message.edit_text(PORTFOLIO_TEXT, reply_markup=get_back_button(), parse_mode="Markdown")
+    await callback.message.edit_text(PORTFOLIO_TEXT, reply_markup=get_back_button(), parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data == "contact_managers")
 async def contact_managers_menu(callback: types.CallbackQuery):
-    await callback.message.edit_text("💬 **Написать менеджеру:**", reply_markup=get_contact_menu(), parse_mode="Markdown")
+    await callback.message.edit_text("💬 <b>Написать менеджеру:</b>", reply_markup=get_contact_menu(), parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data == "order")
 async def start_order(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.edit_text(ORDER_START_TEXT, reply_markup=get_contact_menu(), parse_mode="Markdown")
+    await callback.message.edit_text(ORDER_START_TEXT, reply_markup=get_contact_menu(), parse_mode="HTML")
     await callback.answer()
     await state.set_state(OrderForm.name)
 
@@ -327,52 +346,69 @@ async def start_order(callback: types.CallbackQuery, state: FSMContext):
 async def process_name(message: types.Message, state: FSMContext):
     if message.text and message.text.startswith("/"): return
     await state.update_data(name=message.text)
-    await message.answer("🔹 **Шаг 2/4**: Что вы хотите заказать?", parse_mode="Markdown")
+    await message.answer("🔹 <b>Шаг 2/5</b>: Что вы хотите заказать?", parse_mode="HTML")
     await state.set_state(OrderForm.service_type)
 
 @dp.message(OrderForm.service_type)
 async def process_service(message: types.Message, state: FSMContext):
     if message.text and message.text.startswith("/"): return
     await state.update_data(service_type=message.text)
-    await message.answer("🔹 **Шаг 3/4**: Опишите подробнее ваше ТЗ", parse_mode="Markdown")
+    await message.answer("🔹 <b>Шаг 3/5</b>: Опишите подробнее ваше ТЗ", parse_mode="HTML")
     await state.set_state(OrderForm.details)
 
 @dp.message(OrderForm.details)
 async def process_details(message: types.Message, state: FSMContext):
     if message.text and message.text.startswith("/"): return
     await state.update_data(details=message.text)
-    await message.answer("🔹 **Шаг 4/4**: Требуется ли связь с менеджером?", reply_markup=get_yes_no_keyboard(), parse_mode="Markdown")
+    await message.answer("🔹 <b>Шаг 4/5</b>: Прикрепите фото/референс (необязательно). Отправьте изображение или напишите 'нет' для пропуска.", parse_mode="HTML")
+    await state.set_state(OrderForm.photo)
+
+@dp.message(OrderForm.photo)
+async def process_photo(message: types.Message, state: FSMContext):
+    photo_file_id = None
+    if message.photo:
+        photo_file_id = message.photo[-1].file_id
+    await state.update_data(photo_file_id=photo_file_id)
+    await message.answer("🔹 <b>Шаг 5/5</b>: Требуется ли связь с менеджером?", reply_markup=get_yes_no_keyboard(), parse_mode="HTML")
     await state.set_state(OrderForm.manager_contact)
 
 @dp.message(OrderForm.manager_contact, F.text.in_(["✅ Да", "❌ Нет"]))
 async def process_manager_contact(message: types.Message, state: FSMContext):
     data = await state.get_data()
     need_manager = (message.text == "✅ Да")
+    
     order_id = add_order(
         user_id=message.from_user.id,
         username=message.from_user.username,
         name=data["name"],
         service=data["service_type"],
         details=data["details"],
+        photo_file_id=data.get("photo_file_id"),
         need_manager=need_manager,
         created_at=message.date.strftime("%Y-%m-%d %H:%M")
     )
-    # 📢 Уведомление в админ-чат
+    
     try:
-        await bot.send_message(
-            chat_id=ADMIN_CHAT_ID,
-            text=(f"🆕 **Заявка №{order_id}**\n👤 {data['name']} (@{message.from_user.username or 'нет'})\n"
-                  f"🎨 {data['service_type']}\n📝 {data['details'][:100]}{'...' if len(data['details'])>100 else ''}\n"
-                  f"📞 Менеджер: {'✅' if need_manager else '❌'}"),
-            parse_mode="Markdown"
+        admin_text = (
+            f"🆕 Новая заявка №{order_id}\n"
+            f"👤 {data['name']} (@{message.from_user.username or 'нет'})\n"
+            f"🎨 Услуга: {data['service_type']}\n"
+            f"📝 ТЗ: {data['details'][:150]}{'...' if len(data['details'])>150 else ''}\n"
+            f"📎 Фото: {'✅ Есть' if data.get('photo_file_id') else '❌ Нет'}\n"
+            f"📞 Менеджер: {'✅ Да' if need_manager else '❌ Нет'}\n"
+            f"🕒 Дата: {message.date.strftime('%Y-%m-%d %H:%M')}"
         )
+        await bot.send_message(chat_id=ADMIN_CHAT_ID, text=admin_text)
     except Exception as e:
         logging.warning(f"Не отправлено в админ-чат: {e}")
     
     await message.answer(
-        f"✅ **Заявка №{order_id} отправлена!**\n\nСпасибо, {data['name']}! 🐸\nНажмите кнопку ниже 👇",
+        f"✅ <b>Заявка №{order_id} отправлена!</b>\n\n"
+        f"Спасибо, {clean_telegram_text(data['name'])}! 🐸\n"
+        f"Мы свяжемся с вами при необходимости.\n\n"
+        f"Нажмите кнопку ниже 👇",
         reply_markup=get_order_complete_keyboard(),
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
     await state.clear()
 
@@ -384,24 +420,57 @@ async def open_admin_panel(callback: types.CallbackQuery):
         return
     stats = get_stats()
     await callback.message.edit_text(
-        f"📊 **СТАТИСТИКА**\n📦 Всего: {stats['total']}\n🆕 Новые: {stats['new']}\n✅ Выполнено: {stats['done']}\n❌ Отклонено: {stats['rejected']}\n\n🔹 Выберите действие:",
+        f"📊 <b>СТАТИСТИКА</b>\n"
+        f"📦 Всего: {stats['total']}\n"
+        f"🆕 Новые: {stats['new']}\n"
+        f"✅ Выполнено: {stats['done']}\n"
+        f"❌ Отклонено: {stats['rejected']}\n\n"
+        f"🔹 Выберите действие:",
         reply_markup=get_admin_panel(),
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
     await callback.answer()
 
+def format_order_caption(order: dict) -> str:
+    return (
+        f"📋 Заявка №{order['id']}\n"
+        f"👤 Имя: {clean_telegram_text(order['name'])}\n"
+        f"🔖 Пользователь: @{clean_telegram_text(order['username'] or 'Не указан')} (ID: {order['user_id']})\n"
+        f"🎨 Услуга: {clean_telegram_text(order['service'])}\n"
+        f"📝 ТЗ: {clean_telegram_text(order['details'])}\n"
+        f"📎 Фото: {'✅ Прикреплено' if order.get('photo_file_id') else '❌ Нет'}\n"
+        f"📞 Менеджер: {'✅ Да' if order['need_manager'] else '❌ Нет'}\n"
+        f"🕒 Дата: {order['created_at']}\n"
+        f"📊 Статус: {order['status'].upper()}"
+    )
+
+async def send_order_to_admin(callback: types.CallbackQuery, order: dict, reply_markup):
+    caption = format_order_caption(order)
+    try:
+        if order.get("photo_file_id"):
+            await callback.message.answer_photo(
+                photo=order["photo_file_id"],
+                caption=caption,
+                reply_markup=reply_markup
+            )
+        else:
+            await callback.message.answer(text=caption, reply_markup=reply_markup)
+    except Exception as e:
+        logging.error(f"Ошибка отправки заявки {order['id']}: {e}")
+        await callback.message.answer("⚠️ Не удалось отобразить заявку", reply_markup=get_back_button())
+
 @dp.callback_query(F.data == "admin_unseen")
 async def show_unseen_orders(callback: types.CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS: return
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("⛔ Доступ запрещён", show_alert=True)
+        return
     unseen = get_orders(status="new")
     if not unseen:
         await callback.message.edit_text("🎉 Нет новых заявок!", reply_markup=get_admin_panel())
+        await callback.answer()
         return
     for order in unseen:
-        text = (f"📋 **Заявка №{order['id']}**\n👤 {order['name']}\n🔖 @{order['username'] or 'нет'} (ID: {order['user_id']})\n"
-                f"🎨 {order['service']}\n📝 {order['details']}\n📞 {'✅' if order['need_manager'] else '❌'}\n"
-                f"🕒 {order['created_at']}\n📊 {order['status'].upper()}")
-        await callback.message.answer(text, reply_markup=get_order_actions(order["id"]), parse_mode="Markdown")
+        await send_order_to_admin(callback, order, get_order_actions(order["id"]))
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("admin_done_"))
@@ -412,7 +481,10 @@ async def mark_order_done(callback: types.CallbackQuery):
     if order:
         update_order_status(order_id, "done")
         try:
-            await bot.send_message(order["user_id"], f"✅ **Заявка №{order_id} выполнена!**\n\nСпасибо, {order['name']}! 🐸", parse_mode="Markdown")
+            await bot.send_message(
+                chat_id=order["user_id"],
+                text=f"✅ Заявка №{order_id} выполнена!\n\nСпасибо за заказ, {clean_telegram_text(order['name'])}! 🐸\nЕсли остались вопросы — напишите @{MANAGER_CONTACT}"
+            )
         except: pass
         await callback.message.edit_text(f"✅ Заявка №{order_id} выполнена.", reply_markup=get_admin_panel())
     await callback.answer()
@@ -425,7 +497,10 @@ async def mark_order_rejected(callback: types.CallbackQuery):
     if order:
         update_order_status(order_id, "rejected")
         try:
-            await bot.send_message(order["user_id"], f"❌ **Заявка №{order_id} отклонена**\n\n{order['name']}, уточните детали у @{MANAGER_CONTACT} 🐸", parse_mode="Markdown")
+            await bot.send_message(
+                chat_id=order["user_id"],
+                text=f"❌ Заявка №{order_id} отклонена\n\n{clean_telegram_text(order['name'])}, к сожалению, мы не можем выполнить заказ в текущем виде.\nУточните детали у @{MANAGER_CONTACT} и оформите новую заявку 🐸"
+            )
         except: pass
         await callback.message.edit_text(f"❌ Заявка №{order_id} отклонена.", reply_markup=get_admin_panel())
     await callback.answer()
@@ -433,23 +508,28 @@ async def mark_order_rejected(callback: types.CallbackQuery):
 @dp.callback_query(F.data.startswith("admin_contact_"))
 async def contact_user(callback: types.CallbackQuery):
     if callback.from_user.id not in ADMIN_IDS: return
-    order = get_order_by_id(int(callback.data.split("_")[-1]))
+    order_id = int(callback.data.split("_")[-1])
+    order = get_order_by_id(order_id)
     if order:
-        msg = f"💬 @{order['username']}" if order["username"] else f"⚠️ ID: {order['user_id']}"
-        await callback.message.answer(msg)
+        username = order["username"]
+        if username:
+            await callback.message.answer(f"💬 Написать пользователю: @{clean_telegram_text(username)}")
+        else:
+            await callback.message.answer(f"⚠️ У пользователя нет username. Его ID: {order['user_id']}")
     await callback.answer()
 
 @dp.callback_query(F.data == "admin_all")
 async def show_all_orders(callback: types.CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS: return
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("⛔ Доступ запрещён", show_alert=True)
+        return
     all_orders = get_orders()
     if not all_orders:
-        await callback.message.edit_text("📭 Заявок нет.", reply_markup=get_admin_panel())
+        await callback.message.edit_text("📭 Заявок пока нет.", reply_markup=get_admin_panel())
+        await callback.answer()
         return
     for order in all_orders:
-        text = (f"📋 **№{order['id']}**\n👤 {order['name']}\n🔖 @{order['username'] or 'нет'}\n🎨 {order['service']}\n"
-                f"📝 {order['details'][:120]}{'...' if len(order['details'])>120 else ''}\n📊 {order['status'].upper()}")
-        await callback.message.answer(text, reply_markup=get_back_button(), parse_mode="Markdown")
+        await send_order_to_admin(callback, order, get_back_button())
     await callback.answer()
 
 # ==================== HTTP-SERVER ДЛЯ RENDER ====================
@@ -457,7 +537,6 @@ async def handle_health(request):
     return web.Response(text="🐸 Bot is alive!", content_type="text/plain")
 
 async def start_http_server():
-    """Запускает минимальный HTTP-сервер для Render"""
     app = web.Application()
     app.router.add_get("/", handle_health)
     app.router.add_get("/health", handle_health)
@@ -472,11 +551,8 @@ async def start_http_server():
 # ==================== ЗАПУСК ====================
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
-    
-    # 🔴 Запускаем HTTP-сервер для Render (если переменная PORT задана)
     if os.getenv("PORT"):
         await start_http_server()
-    
     logging.info("✅ Бот запущен (polling + dummy HTTP)")
     await dp.start_polling(bot)
 
