@@ -12,12 +12,13 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.exceptions import TelegramConflictError, TelegramAPIError
 from aiohttp import web
 
 # ==================== НАСТРОЙКИ ====================
 BOT_TOKEN = "8606858777:AAG8beK0_nsqLJmcekljugRbl-vR1onBdWM"
 ADMIN_IDS = [1226747872, 713645590]  # ✅ ID администраторов
-ADMIN_CHAT_ID = -4341787203         # ✅ ID чата для уведомлений
+ADMIN_CHAT_ID = -4341787203      # ✅ Исправленный ID супергруппы
 MANAGER_CONTACT = "PavelAlexandroviich"
 PORTFOLIO_LINK = "https://t.me/BeaverStudio"
 DB_FILE = "orders.db"
@@ -537,11 +538,40 @@ async def handle_health(request):
     return web.Response(text="🐸 Bot is alive!", content_type="text/plain")
 
 async def run_polling():
-    await bot.delete_webhook(drop_pending_updates=True)
-    logging.info("✅ Polling запущен")
-    await dp.start_polling(bot)
+    """Запускает polling с обработкой конфликтов"""
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        await asyncio.sleep(1)  # Ждём, пока Telegram отключит webhook
+        logging.info("🔌 Webhook отключён, готовлю polling...")
+    except Exception as e:
+        logging.warning(f"⚠️ Не удалось отключить webhook: {e}")
+    
+    max_retries = 5
+    retry_delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            logging.info(f"✅ Запуск polling (попытка {attempt+1})")
+            await dp.start_polling(bot)
+            break
+        except TelegramConflictError as e:
+            logging.warning(f"⚠️ Конфликт polling: {e}")
+            if attempt < max_retries - 1:
+                logging.info(f"🔄 Повтор через {retry_delay} сек...")
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2
+            else:
+                logging.error("❌ Не удалось запустить polling")
+                raise
+        except TelegramAPIError as e:
+            logging.error(f"❌ Ошибка Telegram API: {e}")
+            raise
+        except Exception as e:
+            logging.error(f"❌ Неожиданная ошибка: {e}", exc_info=True)
+            raise
 
 async def run_http_server():
+    """Запускает HTTP-сервер для Render"""
     app = web.Application()
     app.router.add_get("/", handle_health)
     app.router.add_get("/health", handle_health)
