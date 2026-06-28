@@ -16,7 +16,7 @@ from aiohttp import web
 
 # ==================== НАСТРОЙКИ ====================
 BOT_TOKEN = "8606858777:AAG8beK0_nsqLJmcekljugRbl-vR1onBdWM"
-ADMIN_IDS = [123456789, 713645590]  # ✅ ID администраторов
+ADMIN_IDS = [1226747872, 713645590]  # ✅ ID администраторов
 ADMIN_CHAT_ID = -5345617201         # ✅ ID чата для уведомлений
 MANAGER_CONTACT = "PavelAlexandroviich"
 PORTFOLIO_LINK = "https://t.me/BeaverStudio"
