@@ -383,11 +383,19 @@ async def process_manager_contact(message: types.Message, state: FSMContext):
             f"👤 {data['name']} (@{message.from_user.username or 'нет'})\n"
             f"🎨 Услуга: {data['service_type']}\n"
             f"📝 ТЗ: {data['details'][:150]}{'...' if len(data['details'])>150 else ''}\n"
-            f"📎 Фото: {'✅ Есть' if data.get('photo_file_id') else '❌ Нет'}\n"
             f"📞 Менеджер: {'✅ Да' if need_manager else '❌ Нет'}\n"
             f"🕒 Дата: {message.date.strftime('%Y-%m-%d %H:%M')}"
         )
-        await bot.send_message(chat_id=ADMIN_CHAT_ID, text=admin_text)
+        
+        photo_file_id = data.get("photo_file_id")
+        if photo_file_id:
+            await bot.send_photo(
+                chat_id=ADMIN_CHAT_ID,
+                photo=photo_file_id,
+                caption=admin_text
+            )
+        else:
+            await bot.send_message(chat_id=ADMIN_CHAT_ID, text=admin_text)
     except Exception as e:
         logging.warning(f"Не отправлено в админ-чат: {e}")
     
